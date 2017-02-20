@@ -20,10 +20,11 @@
 #include <ESP8266WiFi.h>
 #include <WiFiManager.h>          //https://github.com/tzapu/WiFiManager
 #include <EEPROM.h>
-#include <ArduinoOTA.h>
+//#include <ArduinoOTA.h>
 #include <ESP8266mDNS.h>
 #include <WiFiUdp.h>
 #include "box.hpp"
+#include "fw_updater.hpp"
 
 #define SONOFF_BUTTON    0
 #define SONOFF_RELAY    12
@@ -62,6 +63,7 @@ int minutes = -1;
 int seconds = -1;
 int lastMinutes = -1;
 
+Luvitronics::FWUpdater* fwUpdater = new FWUpdater();
 //for LED status
 #include <Ticker.h>
 Ticker ticker;
@@ -83,6 +85,7 @@ bool checkAlarm = 0;
 
 char box1hour = -1;
 char box1min = -1;
+std::vector<std::unique_ptr<Box>> boxes;
 
 const int CMD_WAIT = 0;
 const int CMD_BUTTON_CHANGE = 1;
@@ -243,140 +246,120 @@ unsigned long sendNTPpacket(IPAddress& address)
 
 void setup()
 {
-  Serial.begin(115200);
-  
-  inputString.reserve(200);
+    Serial.begin(115200);
 
-  //set led pin as output
-  pinMode(SONOFF_LED, OUTPUT);
-  // start ticker with 0.5 because we start in AP mode and try to connect
-  ticker.attach(0.6, tick);
+    inputString.reserve(200);
+
+    //set led pin as output
+    pinMode(SONOFF_LED, OUTPUT);
+    // start ticker with 0.5 because we start in AP mode and try to connect
+    ticker.attach(0.6, tick);
 
 
-  const char *hostname = "ESP8266";
+    const char *hostname = "ESP8266";
 
-  WiFiManager wifiManager;
-  //set callback that gets called when connecting to previous WiFi fails, and enters Access Point mode
-  wifiManager.setAPCallback(configModeCallback);
+    WiFiManager wifiManager;
+    //set callback that gets called when connecting to previous WiFi fails, and enters Access Point mode
+    wifiManager.setAPCallback(configModeCallback);
 
-  //timeout - this will quit WiFiManager if it's not configured in 3 minutes, causing a restart
-  wifiManager.setConfigPortalTimeout(180);
+    //timeout - this will quit WiFiManager if it's not configured in 3 minutes, causing a restart
+    wifiManager.setConfigPortalTimeout(180);
 
-  //custom params
-  EEPROM.begin(512);
-  EEPROM.get(0, settings);
-  EEPROM.end();
-
-  if (settings.salt != EEPROM_SALT) {
-    Serial.println("Invalid settings in EEPROM, trying with defaults");
-    WMSettings defaults;
-    settings = defaults;
-  }
-
-  //set config save notify callback
-  wifiManager.setSaveConfigCallback(saveConfigCallback);
-
-  if (!wifiManager.autoConnect(hostname)) {
-    Serial.println("failed to connect and hit timeout");
-    //reset and try again, or maybe put it to deep sleep
-    ESP.reset();
-    delay(1000);
-  }
-
-  //save the custom parameters to FS
-  if (shouldSaveConfig) {
-    Serial.println("Saving config");
-
+    //custom params
     EEPROM.begin(512);
-    EEPROM.put(0, settings);
+    EEPROM.get(0, settings);
     EEPROM.end();
-  }
 
-  //OTA
-  ArduinoOTA.onStart([]() {
-    //Serial.println("Start OTA");
-  });
-  ArduinoOTA.onEnd([]() {
-    //Serial.println("\nEnd");
-  });
-  ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
-    //Serial.printf("Progress: %u%%\r", (progress / (total / 100)));
-  });
-  ArduinoOTA.onError([](ota_error_t error) {
-    Serial.printf("Error[%u]: ", error);
-    if (error == OTA_AUTH_ERROR) Serial.println("Auth Failed");
-    else if (error == OTA_BEGIN_ERROR) Serial.println("Begin Failed");
-    else if (error == OTA_CONNECT_ERROR) Serial.println("Connect Failed");
-    else if (error == OTA_RECEIVE_ERROR) Serial.println("Receive Failed");
-    else if (error == OTA_END_ERROR) Serial.println("End Failed");
-  });
-  
-  //ArduinoOTA.setPassword((const char *)"123456");
-  ArduinoOTA.setHostname(hostname);
-  ArduinoOTA.begin();
+    if (settings.salt != EEPROM_SALT) {
+        Serial.println("Invalid settings in EEPROM, trying with defaults");
+        WMSettings defaults;
+        settings = defaults;
+    }
 
-  //if you get here you have connected to the WiFi
-  Serial.println("connected...yeey :)");
-  ticker.detach();
-  
-  // Start the server
-  server.begin();
-  serverTcp.begin();
-  Serial.println("Server started");
-  
-  // Print the IP address
-  Serial.print("Use this URL to connect: ");
-  Serial.print("http://");
-  Serial.print(WiFi.localIP());
-  Serial.println("/");
+    //set config save notify callback
+    wifiManager.setSaveConfigCallback(saveConfigCallback);
 
-  //setup button
-  pinMode(SONOFF_BUTTON, INPUT);
-  attachInterrupt(SONOFF_BUTTON, toggleState, CHANGE);
+    if (!wifiManager.autoConnect(hostname)) {
+        Serial.println("failed to connect and hit timeout");
+        //reset and try again, or maybe put it to deep sleep
+        ESP.reset();
+        delay(1000);
+    }
 
-  //setup relay
-  pinMode(SONOFF_RELAY, OUTPUT);
-  
-  //setup box IOs
-  pinMode(BOX_BUTTON, INPUT);
-  pinMode(BOX_BUZZER, OUTPUT);
-  pinMode(BOX_LED, OUTPUT);
-  analogWriteFreq(1000);
-  analogWrite(BOX_BUZZER, 0);
-  attachInterrupt(BOX_BUTTON, resetBox1, FALLING);
-  digitalWrite(BOX_LED, 0);
-  
-  //EEPROM.begin(1024);
-  //EEPROM.put(513, 22);
-  //EEPROM.put(514, 20);
-  //for (int i = 513; i < 1024; ++i)
-  //  EEPROM.put(i, 255);
-  //EEPROM.end();
-  
-  EEPROM.begin(1024);
-  EEPROM.get(513, box1hour);
-  EEPROM.get(514, box1min);
-  EEPROM.end();
-  
-  //Serial.print("box1hour: ");
-  //Serial.println((int)box1hour);
-  //Serial.print("box1min: ");
-  //Serial.println((int)box1min);
-  
-  udp.begin(localUdpPort);
-  WiFi.hostByName(ntpServerName, timeServerIP); 
-  sendNTPpacket(timeServerIP);
-  
-  turnOff();
-  //Serial.println("done setup");
-  
-  tickerOTA.attach(0.1, tickOTA);
-  tickerTCP.attach(0.05, tickTCP);
-  tickerPB.attach(0.1, tickPB);
-  //tickerPWM.attach(0.5, tickPWM);
-  tickerGetTime.attach(300, tickGetTime); // every 5 minutes get ntp time
-  tickerCheckUDP.attach(1, tickCheckUDP);
-  tickerCheckAlarm.attach(10, tickCheckAlarm);
+    //save the custom parameters to FS
+    if (shouldSaveConfig) {
+        Serial.println("Saving config");
+
+        EEPROM.begin(512);
+        EEPROM.put(0, settings);
+        EEPROM.end();
+    }
+
+    //if you get here you have connected to the WiFi
+    Serial.println("connected...yeey :)");
+    ticker.detach();
+
+    // Start the server
+    server.begin();
+    serverTcp.begin();
+    Serial.println("Server started");
+
+    // Print the IP address
+    Serial.print("Use this URL to connect: ");
+    Serial.print("http://");
+    Serial.print(WiFi.localIP());
+    Serial.println("/");
+
+    //setup button
+    pinMode(SONOFF_BUTTON, INPUT);
+    attachInterrupt(SONOFF_BUTTON, toggleState, CHANGE);
+
+    //setup relay
+    pinMode(SONOFF_RELAY, OUTPUT);
+
+    /*EEPROM.begin(1024);
+    EEPROM.put(513, 1);
+    EEPROM.put(514, 8);
+    EEPROM.put(515, 45);
+    EEPROM.put(516, 255);
+    EEPROM.put(517, 255);
+    EEPROM.put(534, 1);
+    EEPROM.put(535, 7);
+    EEPROM.put(536, 30);
+    //for (int i = 513; i < 1024; ++i)
+    //    EEPROM.put(i, 255);
+    EEPROM.end();*/
+
+    /*EEPROM.begin(1024);
+    EEPROM.get(513, box1hour);
+    EEPROM.get(514, box1min);
+    EEPROM.end();*/
+
+    //setup box IOs
+    Box* bxs[] = {
+        new Box(1, (uint8_t)BOX_LED, (uint8_t)BOX_BUTTON)
+    };
+    for (auto box : bxs) boxes.emplace_back(box);
+
+    pinMode(BOX_BUZZER, OUTPUT);
+    analogWriteFreq(1000);
+    analogWrite(BOX_BUZZER, 0);
+    attachInterrupt(BOX_BUTTON, resetBox1, FALLING);
+
+    udp.begin(localUdpPort);
+    WiFi.hostByName(ntpServerName, timeServerIP); 
+    sendNTPpacket(timeServerIP);
+
+    turnOff();
+    //Serial.println("done setup");
+
+    tickerOTA.attach(0.1, tickOTA);
+    tickerTCP.attach(0.05, tickTCP);
+    tickerPB.attach(0.1, tickPB);
+    //tickerPWM.attach(0.5, tickPWM);
+    tickerGetTime.attach(300, tickGetTime); // every 5 minutes get ntp time
+    tickerCheckUDP.attach(1, tickCheckUDP);
+    tickerCheckAlarm.attach(10, tickCheckAlarm);
   
 }
 
@@ -387,7 +370,7 @@ void loop()
   if(ota)
   {
     ota = 0;
-    ArduinoOTA.handle();
+    fwUpdater->process();
   }
 
   if(tcp)
@@ -435,14 +418,54 @@ void loop()
         client.print("0");
       }
       
-      client.println("<br><br>");
-      client.print("Time Box1 = ");
-      client.print((int)box1hour);
-      client.print(":");
-      client.print((int)box1min);
-      client.println("<br><br>");
-      client.print("Alarm Box1 = ");
-      client.print(digitalRead(BOX_LED));
+      for(auto& box : boxes)
+      {
+        //task->process();
+        client.println("<br><br>");
+        client.print("Box");
+        client.print(box->getBoxNumber());
+        client.println(":");
+        
+        std::vector<std::pair<uint8_t,uint8_t>> currentWETimes = box->getWEAlarmTimes();
+        uint8_t i = 0;
+        //for(auto i = 0; i < box.getLenWETimes(); ++i)
+        for(auto& time : currentWETimes)
+        {
+            ++i;
+            //Serial.print (buffer); std::get<0>(time)
+            client.print("<p>");
+            client.print("Weekend Time ");
+            client.print(i);
+            client.print(": ");
+            client.print((uint8_t)std::get<0>(time));
+            //client.print((int)box1hour);
+            client.print(":");
+            client.print((uint8_t)std::get<1>(time));
+            //client.print((int)box1min);
+            client.println("</p>");
+        }
+        
+        std::vector<std::pair<uint8_t,uint8_t>> currentWDTimes = box->getWDAlarmTimes();
+        i = 0;
+        for(auto& time : currentWDTimes)
+        {
+            ++i;
+            //Serial.print (buffer); std::get<0>(time)
+            client.print("<p>");
+            client.print("Weekday Time ");
+            client.print(i);
+            client.print(": ");
+            client.print((uint8_t)std::get<0>(time));
+            //client.print((int)box1hour);
+            client.print(":");
+            client.print((uint8_t)std::get<1>(time));
+            //client.print((int)box1min);
+            client.println("</p>");
+        }
+        client.print("<p>Alarm Box1 = ");
+        client.print(digitalRead(BOX_LED));
+        client.println("</p>");
+      }
       
       client.println("<br><br>");
       client.println("<a href=\"/DO0=1\"\"><button>Turn On </button></a>");
@@ -635,3 +658,8 @@ void loop()
   }
 
 }
+
+
+
+
+

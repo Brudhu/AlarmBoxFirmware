@@ -14,12 +14,12 @@ class Box
 public: 
     Box(uint16_t boxNumber, uint8_t ledPinNumber, uint8_t lidButtonPinNumber);
     
-    std::vector<std::pair<int,int>> getWEAlarmTimes();
-    void addWEAlarmTime(std::pair<int,int> time);
+    std::vector<std::pair<uint8_t,uint8_t>> getWEAlarmTimes();
+    void addWEAlarmTime(std::pair<uint8_t,uint8_t> time);
     void delWEAlarmTime(uint8_t position);
     
-    std::vector<std::pair<int,int>> getWDAlarmTimes();
-    void addWDAlarmTime(std::pair<int,int> time);
+    std::vector<std::pair<uint8_t,uint8_t>> getWDAlarmTimes();
+    void addWDAlarmTime(std::pair<uint8_t,uint8_t> time);
     void delWDAlarmTime(uint8_t position);
     
     void setAlarmState(bool newState);
@@ -27,16 +27,23 @@ public:
     
     void resetAlarmState();
     
+    uint8_t getBoxNumber();
+    uint8_t getLenWETimes();
+    uint8_t getLenWDTimes();
+    
 private:
-    uint16_t number;
+    uint8_t number;
     uint8_t ledPin;
     uint8_t lidButtonPin;
     bool alarmOn;
-    std::vector<std::pair<int,int>> weekEndAlarmTimes;
-    std::vector<std::pair<int,int>> weekDayAlarmTimes;
+    std::vector<std::pair<uint8_t,uint8_t>> weekEndAlarmTimes;
+    std::vector<std::pair<uint8_t,uint8_t>> weekDayAlarmTimes;
     uint16_t eepromPosition;
-    uint16_t lenWEAlarmTimes;
-    uint16_t lenWDAlarmTimes;
+    uint8_t lenWEAlarmTimes;
+    uint8_t lenWDAlarmTimes;
+    
+    //constexpr unsigned MaxNumTimes = 10;
+    //constexpr unsigned WdPos = 1 + 2*MaxNumTimes;
 };
 
 #endif //DIMMER_LISTENER_HPP

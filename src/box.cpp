@@ -22,23 +22,18 @@ Box::Box(uint16_t boxNumber, uint8_t ledPinNumber, uint8_t lidButtonPinNumber)
     EEPROM.get(eepromPosition, lenWEAlarmTimes);
     EEPROM.get(eepromPosition + WD_POS, lenWDAlarmTimes);
     
-    if(lenWEAlarmTimes == 255)
-        lenWEAlarmTimes = 0;
-    if(lenWDAlarmTimes == 255)
-        lenWDAlarmTimes = 0;
-    
-    for(int i = eepromPosition + 1; i <= (eepromPosition + 1) + (2 * lenWEAlarmTimes); i += 2)
+    if(lenWEAlarmTimes > NUM_TIMES)
     {
-        uint8_t hour;
-        uint8_t minutes;
-        
-        EEPROM.get(i, hour);
-        EEPROM.get(i + 1, minutes);
-        
-        addWEAlarmTime(std::make_pair(hour, minutes));
+        lenWEAlarmTimes = 0;
+        EEPROM.put(eepromPosition, 0);
+    }
+    if(lenWDAlarmTimes > NUM_TIMES)
+    {
+        lenWDAlarmTimes = 0;
+        EEPROM.put(eepromPosition + WD_POS, 0);
     }
     
-    for(int i = eepromPosition + WD_POS + 1; i <= (eepromPosition + WD_POS + 1) + (2 * lenWEAlarmTimes); i += 2)
+    for(int i = eepromPosition + 1; i < (eepromPosition + 1) + (2 * lenWEAlarmTimes); i += 2)
     {
         uint8_t hour;
         uint8_t minutes;
@@ -46,20 +41,33 @@ Box::Box(uint16_t boxNumber, uint8_t ledPinNumber, uint8_t lidButtonPinNumber)
         EEPROM.get(i, hour);
         EEPROM.get(i + 1, minutes);
         
-        addWDAlarmTime(std::make_pair(hour, minutes));
+        //addWEAlarmTime(std::make_pair(hour, minutes));
+        weekEndAlarmTimes.push_back(std::make_pair(hour, minutes));
+    }
+    
+    for(int i = eepromPosition + WD_POS + 1; i < (eepromPosition + WD_POS + 1) + (2 * lenWDAlarmTimes); i += 2)
+    {
+        uint8_t hour;
+        uint8_t minutes;
+        
+        EEPROM.get(i, hour);
+        EEPROM.get(i + 1, minutes);
+        
+        //addWDAlarmTime(std::make_pair(hour, minutes));
+        weekDayAlarmTimes.push_back(std::make_pair(hour, minutes));
     }
     
     EEPROM.end();
 }
 
-std::vector<std::pair<int,int>> Box::getWEAlarmTimes()
+std::vector<std::pair<uint8_t,uint8_t>> Box::getWEAlarmTimes()
 {
     return weekEndAlarmTimes;
 }
 
-void Box::addWEAlarmTime(std::pair<int,int> time)
+void Box::addWEAlarmTime(std::pair<uint8_t,uint8_t> time)
 {
-    if(lenWEAlarmTimes < 10)
+    if(lenWEAlarmTimes < NUM_TIMES)
     {
         weekEndAlarmTimes.push_back(time);
         
@@ -94,14 +102,14 @@ void Box::delWEAlarmTime(uint8_t position)
     }
 }
 
-std::vector<std::pair<int,int>> Box::getWDAlarmTimes()
+std::vector<std::pair<uint8_t,uint8_t>> Box::getWDAlarmTimes()
 {
     return weekDayAlarmTimes;
 }
 
-void Box::addWDAlarmTime(std::pair<int,int> time)
+void Box::addWDAlarmTime(std::pair<uint8_t,uint8_t> time)
 {
-    if(lenWDAlarmTimes < 10)
+    if(lenWDAlarmTimes < NUM_TIMES)
     {
         weekDayAlarmTimes.push_back(time);
         
@@ -150,6 +158,21 @@ bool Box::getAlarmState()
 void Box::resetAlarmState()
 {
     setAlarmState(0);
+}
+
+uint8_t Box::getBoxNumber()
+{
+    return number;
+}
+
+uint8_t Box::getLenWETimes()
+{
+    return lenWEAlarmTimes;
+}
+
+uint8_t Box::getLenWDTimes()
+{
+    return lenWDAlarmTimes;
 }
 
 

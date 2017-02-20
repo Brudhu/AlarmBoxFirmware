@@ -25,6 +25,7 @@ echo:
 
 CHIP ?= esp8266
 
+echo: $(HOME)
 # Set chip specific default board unless specified
 BOARD ?= $(if $(filter $(CHIP), esp32),esp32,generic)
 
@@ -36,7 +37,8 @@ UPLOAD_PORT ?= /dev/ttyUSB0
 UPLOAD_VERB ?= -v
 
 # OTA parameters
-ESP_ADDR ?= 192.168.1.13
+ESP_ADDR ?= 192.168.1.11
+#ESP_ADDR ?= 192.168.1.13
 ESP_PORT ?= 8266
 ESP_PWD ?= ''
 
@@ -50,7 +52,7 @@ HTTP_USR ?= password
 BUILD_DIR ?= build_$(MAIN_NAME)_$(BOARD)
 
 # File system source directory
-FS_DIR ?= $(dir $(SKETCH))data
+FS_DIR ?= $(dir $(MAIN))data
 
 # Bootloader
 BOOT_LOADER ?= $(ESP_ROOT)/bootloaders/eboot/eboot.elf
@@ -89,9 +91,9 @@ else
   # Location defined, assume it is a git clone
   ESP_ARDUINO_VERSION = $(call git_description,$(ESP_ROOT))
 endif
-ESP_LIBS = $(ESP_ROOT)/libraries
-SDK_ROOT = $(ESP_ROOT)/tools/sdk
-TOOLS_ROOT = $(ESP_ROOT)/tools
+ESP_LIBS := $(ESP_ROOT)/libraries
+SDK_ROOT := $(ESP_ROOT)/tools/sdk
+TOOLS_ROOT := $(ESP_ROOT)/tools
 
 ifeq ($(wildcard $(ESP_ROOT)/cores/$(CHIP)),)
   $(error $(ESP_ROOT) is not a vaild directory for $(CHIP))
@@ -100,21 +102,21 @@ endif
 ESPTOOL_PY = esptool.py --baud=$(UPLOAD_SPEED) --port $(UPLOAD_PORT)
 
 # Search for sketch if not defined
-SKETCH := src/main.cpp
+MAIN := src/main.cpp
 
-ifeq ($(wildcard $(SKETCH)),)
-  $(error Sketch $(SKETCH) not found)
+ifeq ($(wildcard $(MAIN)),)
+  $(error Sketch $(MAIN) not found)
 endif
 
 # Main output definitions
-MAIN_NAME := $(basename $(notdir $(SKETCH)))
+MAIN_NAME := $(basename $(notdir $(MAIN)))
 MAIN_EXE = $(BUILD_DIR)/$(MAIN_NAME).bin
 FS_IMAGE = $(BUILD_DIR)/FS.spiffs
 
 ifeq ($(OS), Windows_NT)
   # Adjust critical paths
   BUILD_DIR := $(shell cygpath -m $(BUILD_DIR))
-  SKETCH := $(shell cygpath -m $(SKETCH))
+  MAIN := $(shell cygpath -m $(MAIN))
 endif
 
 # Build file extensions
@@ -132,24 +134,16 @@ CORE_OBJ := $(patsubst %,$(BUILD_DIR)/%$(OBJ_EXT),$(notdir $(CORE_SRC)))
 CORE_LIB = $(BUILD_DIR)/arduino.ar
 
 # User defined compilation units and directories
-ifeq ($(LIBS),)
-  # Automatically find directories with header files used by the sketch
-  LIBS := $(shell perl -e 'use File::Find;$$d = shift;while (<>) {$$f{"$$1"} = 1 if /^\s*\#include\s+[<"]([^>"]+)/;}find(sub {print $$File::Find::dir," " if $$f{$$_}}, $$d);' $(ESP_LIBS) $(SKETCH))
-  ifeq ($(LIBS),)
-    # No dependencies found
-    LIBS = /dev/null
-  endif
-endif
-
-SKETCH_DIR = $(dir $(SKETCH))
-USER_LIB := $(shell find $(SKETCH_DIR)/../libraries -name "*.S" -o -name "*.c" -o -name "*.cpp" -o -name "*.h" -o -name "*.hpp")
-LIBS += $(USER_LIB)
-USER_INC := $(shell find $(SKETCH_DIR) $(LIBS) -name "*.h" -o -name "*.hpp")
-USER_SRC := $(SKETCH) $(shell find $(SKETCH_DIR) $(LIBS) -name "*.S" -o -name "*.c" -o -name "*.cpp")
+# Automatically find directories with header files used by the sketch
+MAIN_DIR = $(dir $(MAIN))
+USR_FILES := $(shell find $(MAIN_DIR) -name "*.S" -o -name "*.c" -o -name "*.cpp" -o -name "*.h" -o -name "*.hpp")
+LIBS = $(sort $(foreach SRC_FILE,$(USR_FILES),$(shell perl -e 'use File::Find;$$d = shift;while (<>) {$$f{"$$1"} = 1 if /^\s*\#include\s+[<"]([^>"]+)/;}find(sub {print $$File::Find::dir," " if $$f{$$_}}, $$d);' $(ESP_LIBS) $(SRC_FILE))))
+INC_FILES := $(shell find $(MAIN_DIR) $(LIBS) -name "*.h" -o -name "*.hpp")
+SRC_FILES := $(shell find $(MAIN_DIR) $(LIBS) -name "*.S" -o -name "*.c" -o -name "*.cpp")
 # Object file suffix seems to be significant for the linker...
-USER_OBJ := $(subst .ino,_.cpp,$(patsubst %,$(BUILD_DIR)/%$(OBJ_EXT),$(notdir $(USER_SRC))))
-USER_DIRS := $(sort $(dir $(USER_SRC)))
-USER_INC_DIRS := $(sort $(dir $(USER_INC)))
+OBJ_FILES := $(subst .ino,_.cpp,$(patsubst %,$(BUILD_DIR)/%$(OBJ_EXT),$(notdir $(SRC_FILES))))
+SRC_DIRS := $(sort $(dir $(SRC_FILES)))
+INC_DIRS := $(sort $(dir $(INC_FILES)))
 
 # Use first flash definition for the board as default
 FLASH_DEF ?= $(shell cat $(ESP_ROOT)/boards.txt | perl -e 'while (<>) {if (/^$(BOARD)\.menu\.FlashSize\.([^\.]+)=/){ print "$$1"; exit;}} print "NA";')
@@ -163,9 +157,9 @@ $(ARDUINO_MK): $(ARDUINO_DESC) $(MAKEFILE_LIST) | $(BUILD_DIR)
 -include $(ARDUINO_MK)
 
 # Compilation directories and path
-INCLUDE_DIRS += $(CORE_DIR) $(ESP_ROOT)/variants/$(INCLUDE_VARIANT) $(BUILD_DIR)
-C_INCLUDES := $(foreach dir,$(INCLUDE_DIRS) $(USER_INC_DIRS),-I$(dir))
-VPATH += $(shell find $(CORE_DIR) -type d) $(USER_DIRS)
+INCLUDE_DIRS += $(CORE_DIR) $(ESP_ROOT)/variants/$(INCLUDE_VARIANT) $(BUILD_DIR) $(MAIN_DIR)
+INCLUDES := $(foreach dir,$(INCLUDE_DIRS) $(INC_DIRS),-I$(dir))
+VPATH += $(shell find $(CORE_DIR) -type d) $(SRC_DIRS)
 
 # Automatically generated build information data
 # Makes the build date and git descriptions at the actual build event available as string constants in the program
@@ -200,9 +194,9 @@ $(CORE_LIB): $(CORE_OBJ)
 
 BUILD_DATE = $(call time_string,"%Y-%m-%d")
 BUILD_TIME = $(call time_string,"%H:%M:%S")
-SRC_GIT_VERSION := $(call git_description,$(dir $(SKETCH)))
+SRC_GIT_VERSION := $(call git_description,$(dir $(MAIN)))
 
-$(MAIN_EXE): $(CORE_LIB) $(USER_OBJ)
+$(MAIN_EXE): $(CORE_LIB) $(OBJ_FILES)
 	echo Linking $(MAIN_EXE)
 	echo "  Versions: $(SRC_GIT_VERSION), $(ESP_ARDUINO_VERSION)"
 	echo 	'#include <buildinfo.h>' >$(BUILD_INFO_CPP)
@@ -259,7 +253,7 @@ list_boards:
 
 list_lib:
 	echo === User specific libraries ===
-	perl -e 'foreach (@ARGV) {print "$$_\n"}' "* Include directories:" $(USER_INC_DIRS)  "* Library source files:" $(USER_SRC)
+	perl -e 'foreach (@ARGV) {print "$$_\n"}' "* Include directories:" $(INC_DIRS)  "* Source files:" $(SRC_FILES) "* Libs:" $(LIBS) 
 
 list_flash_defs:
 	echo === Memory configurations for board: $(BOARD) ===
@@ -283,7 +277,7 @@ help:
 	echo "  restore_flash        Restore flash memory from a previously dumped file"
 	echo "  list_lib             Show a list of used library files and include paths"
 	echo "Configurable parameters:"
-	echo "  SKETCH               Main source file"
+	echo "  MAIN               Main source file"
 	echo "                         If not specified the first sketch in current"
 	echo "                         directory will be used. If none is found there,"
 	echo "                         a demo example will be used instead."
@@ -348,7 +342,7 @@ sub def_var {
 }
 
 $$v{'runtime.platform.path'} = '$$(ESP_ROOT)';
-$$v{'includes'} = '$$(C_INCLUDES)';
+$$v{'includes'} = '$$(INCLUDES)';
 $$v{'runtime.ide.version'} = '10605';
 $$v{'build.arch'} = '$$(CHIP)';
 $$v{'build.project_name'} = '$$(MAIN_NAME)';
