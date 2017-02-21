@@ -18,6 +18,8 @@
 
 #include <vector>
 #include <ESP8266WiFi.h>
+#include <ESP8266WebServer.h>
+#include <DNSServer.h>
 #include <WiFiManager.h>          //https://github.com/tzapu/WiFiManager
 #include <EEPROM.h>
 //#include <ArduinoOTA.h>
@@ -25,6 +27,8 @@
 #include <WiFiUdp.h>
 #include "box.hpp"
 #include "fw_updater.hpp"
+#include "http_listener.hpp"
+#include "command_listener.hpp"
 
 #define SONOFF_BUTTON    0
 #define SONOFF_RELAY    12
@@ -42,11 +46,6 @@ typedef struct {
 
 WMSettings settings;
 
-WiFiServer server(80);
-WiFiServer serverTcp(2211);
-WiFiClient client;
-WiFiClient clientTcp;
-
 WiFiUDP udp;
 unsigned int localUdpPort = 2115;
 unsigned int remoteUdpPort = 123;
@@ -63,7 +62,6 @@ int minutes = -1;
 int seconds = -1;
 int lastMinutes = -1;
 
-Luvitronics::FWUpdater* fwUpdater = new FWUpdater();
 //for LED status
 #include <Ticker.h>
 Ticker ticker;
@@ -85,7 +83,11 @@ bool checkAlarm = 0;
 
 char box1hour = -1;
 char box1min = -1;
-std::vector<std::unique_ptr<Box>> boxes;
+
+std::vector<std::shared_ptr<Box>> boxes;
+Luvitronics::FWUpdater* fwUpdater = new Luvitronics::FWUpdater();
+Luvitronics::HttpListener* httpListener = new Luvitronics::HttpListener(80, &boxes);
+Luvitronics::CommandListener* commandListener = new Luvitronics::CommandListener(2211, &boxes, &hours, &minutes, &seconds);
 
 const int CMD_WAIT = 0;
 const int CMD_BUTTON_CHANGE = 1;
@@ -299,11 +301,6 @@ void setup()
     Serial.println("connected...yeey :)");
     ticker.detach();
 
-    // Start the server
-    server.begin();
-    serverTcp.begin();
-    Serial.println("Server started");
-
     // Print the IP address
     Serial.print("Use this URL to connect: ");
     Serial.print("http://");
@@ -376,153 +373,8 @@ void loop()
   if(tcp)
   {
     tcp = 0;
-    client = server.available();
-    
-    if(!clientTcp.connected())
-      clientTcp = serverTcp.available();
-
-    delay(10);
-    
-    if(client.available())
-    {
-      // Read the first line of the request
-      String request = client.readStringUntil('\r');
-      //Serial.println(request);
-      client.flush();
-
-      int value = LOW;
-      bool valid = false;
-      if (request.indexOf("/DO0=0") != -1)  {
-        turnOff();
-        value = LOW;
-        valid = true;
-      }   
-      else if (request.indexOf("/DO0=1") != -1)  {
-        turnOn();
-        value = HIGH;
-        valid = true;
-      }
-
-      // Return the response
-      client.println("HTTP/1.1 200 OK");
-      client.println("Content-Type: text/html");
-      client.println(""); //  do not forget this one
-      client.println("<!DOCTYPE HTML>");
-      client.println("<html>");
-
-      client.print("DO0=");
- 
-      if(relayState == HIGH) {
-        client.print("1");
-      } else {
-        client.print("0");
-      }
-      
-      for(auto& box : boxes)
-      {
-        //task->process();
-        client.println("<br><br>");
-        client.print("Box");
-        client.print(box->getBoxNumber());
-        client.println(":");
-        
-        std::vector<std::pair<uint8_t,uint8_t>> currentWETimes = box->getWEAlarmTimes();
-        uint8_t i = 0;
-        //for(auto i = 0; i < box.getLenWETimes(); ++i)
-        for(auto& time : currentWETimes)
-        {
-            ++i;
-            //Serial.print (buffer); std::get<0>(time)
-            client.print("<p>");
-            client.print("Weekend Time ");
-            client.print(i);
-            client.print(": ");
-            client.print((uint8_t)std::get<0>(time));
-            //client.print((int)box1hour);
-            client.print(":");
-            client.print((uint8_t)std::get<1>(time));
-            //client.print((int)box1min);
-            client.println("</p>");
-        }
-        
-        std::vector<std::pair<uint8_t,uint8_t>> currentWDTimes = box->getWDAlarmTimes();
-        i = 0;
-        for(auto& time : currentWDTimes)
-        {
-            ++i;
-            //Serial.print (buffer); std::get<0>(time)
-            client.print("<p>");
-            client.print("Weekday Time ");
-            client.print(i);
-            client.print(": ");
-            client.print((uint8_t)std::get<0>(time));
-            //client.print((int)box1hour);
-            client.print(":");
-            client.print((uint8_t)std::get<1>(time));
-            //client.print((int)box1min);
-            client.println("</p>");
-        }
-        client.print("<p>Alarm Box1 = ");
-        client.print(digitalRead(BOX_LED));
-        client.println("</p>");
-      }
-      
-      client.println("<br><br>");
-      client.println("<a href=\"/DO0=1\"\"><button>Turn On </button></a>");
-      client.println("<a href=\"/DO0=0\"\"><button>Turn Off </button></a><br />");  
-      client.println("</html>");
-    }
-    
-    if(clientTcp.available())
-    {
-      String request = clientTcp.readStringUntil('\n');
-      //Serial.println(request);
-      clientTcp.flush();
-        
-      if (request.indexOf("DO0=0") != -1)  {
-        turnOff();
-        clientTcp.println("OK");
-      }   
-      else if (request.indexOf("DO0=1") != -1)  {
-        turnOn();
-        clientTcp.println("OK");
-      }
-      else if (request.indexOf("B1T=") != -1)  {
-        int indexAux = request.indexOf("B1T=");
-	int indexAux2 = request.indexOf(":");
-	int newHour = request.substring(indexAux + 4, indexAux2).toInt();
-        indexAux = request.indexOf("\n");
-	int newMinute = request.substring(indexAux2 + 1, indexAux).toInt();
-	
-	if(newHour >= 0 && newHour < 24 && newMinute >= 0 && newMinute < 60)
-	{
-	  box1hour = newHour;
-	  box1min = newMinute;
-	  EEPROM.begin(1024);
-	  EEPROM.put(513, newHour);
-	  EEPROM.put(514, newMinute);
-	  EEPROM.end();
-	  clientTcp.println("OK");
-	}
-	else
-	  clientTcp.println("Fail");
-      }
-      else if (request.indexOf("A1=OFF") != -1)  
-      {
-	resetBox1();
-	clientTcp.println("OK");
-      }
-
-      
-      else if (request.indexOf("DO0?") != -1)  {
-        clientTcp.print("DO0=");
-        if(relayState == HIGH) {
-          clientTcp.println("1");
-        } else {
-          clientTcp.println("0");
-        }
-      }   
-    }
+    httpListener->process();
+    commandListener->process();
   }
 
   if(pb)
@@ -641,20 +493,49 @@ void loop()
       hours = 0;
     }
     
-    //Serial.print("Current time: ");
-    //Serial.print(hours);
-    //Serial.print(":");
-    //Serial.print(minutes);
-    //Serial.print(":");
-    //Serial.println(seconds);
-    
-    if(hours == box1hour && minutes == box1min && lastMinutes != minutes)
+    if(lastMinutes != minutes)
     {
-      lastMinutes = minutes;
-      tickerPWM.attach(0.5, tickPWM);
-      digitalWrite(BOX_LED, 1);
-      //Serial.println("ALARM!");
+        bool hourEqual = 0;
+        bool minEqual = 0;
+        for(auto& box : boxes)
+        {
+
+            std::vector<std::pair<uint8_t,uint8_t>> currentWETimes = box->getWEAlarmTimes();
+            std::vector<std::pair<uint8_t,uint8_t>> currentWDTimes = box->getWDAlarmTimes();
+            
+            //TODO: Find out if it's weekday or weekend before calling alarm!
+            //TODO 2: Find a way to turn on only that box' alarm
+            for(auto& time : currentWETimes)
+            {
+                if((uint8_t)std::get<0>(time) == (uint8_t)hours)
+                {
+                    hourEqual = 1;
+                }
+                if((uint8_t)std::get<1>(time) == (uint8_t)minutes)
+                {
+                    minEqual = 1;
+                }
+            }
+            for(auto time : currentWDTimes)
+            {
+                if((uint8_t)std::get<0>(time) == (uint8_t)hours)
+                {
+                    hourEqual = 1;
+                }
+                if((uint8_t)std::get<1>(time) == (uint8_t)minutes)
+                {
+                    minEqual = 1;
+                }
+            }
+        }
+        lastMinutes = minutes;
+        if(hourEqual && minEqual)
+        {
+            tickerPWM.attach(0.5, tickPWM);
+            digitalWrite(BOX_LED, 1);
+        }
     }
+    
   }
 
 }
