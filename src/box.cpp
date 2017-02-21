@@ -65,31 +65,35 @@ std::vector<std::pair<uint8_t,uint8_t>> Box::getWEAlarmTimes()
     return weekEndAlarmTimes;
 }
 
-void Box::addWEAlarmTime(std::pair<uint8_t,uint8_t> time)
+bool Box::addWEAlarmTime(std::pair<uint8_t,uint8_t> time)
 {
-    if(lenWEAlarmTimes < NUM_TIMES)
+    uint8_t hour = std::get<0>(time);
+    uint8_t minute = std::get<1>(time);
+    if(lenWEAlarmTimes < NUM_TIMES && (hour >= 0 && hour < 24) && (minute >= 0 && minute < 60))
     {
         weekEndAlarmTimes.push_back(time);
         
         lenWEAlarmTimes++;
         EEPROM.begin(1024);
         EEPROM.put(eepromPosition, lenWEAlarmTimes);
-        EEPROM.put(eepromPosition + ((lenWEAlarmTimes - 1) * 2) + 1, std::get<0>(time));
-        EEPROM.put(eepromPosition + ((lenWEAlarmTimes - 1) * 2) + 2, std::get<1>(time));
+        EEPROM.put(eepromPosition + ((lenWEAlarmTimes - 1) * 2) + 1, hour);
+        EEPROM.put(eepromPosition + ((lenWEAlarmTimes - 1) * 2) + 2, minute);
         EEPROM.end();
+        return 1;
     }
+    return 0;
 }
 
-void Box::delWEAlarmTime(uint8_t position)
+bool Box::delWEAlarmTime(uint8_t position)
 {
-    if(position >= 0 && position < lenWEAlarmTimes)
+    if(position > 0 && position <= lenWEAlarmTimes)
     {
-        weekEndAlarmTimes.erase(weekEndAlarmTimes.begin() + position);
+        weekEndAlarmTimes.erase(weekEndAlarmTimes.begin() + position - 1);
         
         lenWEAlarmTimes--;
         EEPROM.begin(1024);
         EEPROM.put(eepromPosition, lenWEAlarmTimes);
-        for(int i = eepromPosition + (position * 2) + 1; i < eepromPosition + (lenWEAlarmTimes * 2) + 1; i += 2)
+        for(int i = eepromPosition + ((position-1) * 2) + 1; i < eepromPosition + (lenWEAlarmTimes * 2) + 1; i += 2)
         {
             uint8_t movAux1;
             uint8_t movAux2;
@@ -99,7 +103,9 @@ void Box::delWEAlarmTime(uint8_t position)
             EEPROM.put(i + 1, movAux2);
         }
         EEPROM.end();
+        return 1;
     }
+    return 0;
 }
 
 std::vector<std::pair<uint8_t,uint8_t>> Box::getWDAlarmTimes()
@@ -107,31 +113,35 @@ std::vector<std::pair<uint8_t,uint8_t>> Box::getWDAlarmTimes()
     return weekDayAlarmTimes;
 }
 
-void Box::addWDAlarmTime(std::pair<uint8_t,uint8_t> time)
+bool Box::addWDAlarmTime(std::pair<uint8_t,uint8_t> time)
 {
-    if(lenWDAlarmTimes < NUM_TIMES)
+    uint8_t hour = std::get<0>(time);
+    uint8_t minute = std::get<1>(time);
+    if(lenWDAlarmTimes < NUM_TIMES && (hour >= 0 && hour < 24) && (minute >= 0 && minute < 60))
     {
         weekDayAlarmTimes.push_back(time);
         
         lenWDAlarmTimes++;
         EEPROM.begin(1024);
         EEPROM.put(eepromPosition + WD_POS, lenWDAlarmTimes);
-        EEPROM.put(eepromPosition + WD_POS + ((lenWDAlarmTimes - 1) * 2) + 1, std::get<0>(time));
-        EEPROM.put(eepromPosition + WD_POS + ((lenWDAlarmTimes - 1) * 2) + 2, std::get<1>(time));
+        EEPROM.put(eepromPosition + WD_POS + ((lenWDAlarmTimes - 1) * 2) + 1, hour);
+        EEPROM.put(eepromPosition + WD_POS + ((lenWDAlarmTimes - 1) * 2) + 2, minute);
         EEPROM.end();
+        return 1;
     }
+    return 0;
 }
 
-void Box::delWDAlarmTime(uint8_t position)
+bool Box::delWDAlarmTime(uint8_t position)
 {
-    if(position >= 0 && position < lenWDAlarmTimes)
+    if(position > 0 && position <= lenWDAlarmTimes)
     {
-        weekDayAlarmTimes.erase(weekDayAlarmTimes.begin() + position);
+        weekDayAlarmTimes.erase(weekDayAlarmTimes.begin() + position - 1);
         
         lenWDAlarmTimes--;
         EEPROM.begin(1024);
         EEPROM.put(eepromPosition + WD_POS, lenWDAlarmTimes);
-        for(int i = eepromPosition + WD_POS + (position * 2) + 1; i < eepromPosition + WD_POS + (lenWDAlarmTimes * 2) + 1; i += 2)
+        for(int i = eepromPosition + WD_POS + ((position-1) * 2) + 1; i < eepromPosition + WD_POS + (lenWDAlarmTimes * 2) + 1; i += 2)
         {
             uint8_t movAux1;
             uint8_t movAux2;
@@ -141,7 +151,9 @@ void Box::delWDAlarmTime(uint8_t position)
             EEPROM.put(i + 1, movAux2);
         }
         EEPROM.end();
+        return 1;
     }
+    return 0;
 }
 
 void Box::setAlarmState(bool newState)

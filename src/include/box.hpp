@@ -15,12 +15,12 @@ public:
     Box(uint16_t boxNumber, uint8_t ledPinNumber, uint8_t lidButtonPinNumber);
     
     std::vector<std::pair<uint8_t,uint8_t>> getWEAlarmTimes();
-    void addWEAlarmTime(std::pair<uint8_t,uint8_t> time);
-    void delWEAlarmTime(uint8_t position);
+    bool addWEAlarmTime(std::pair<uint8_t,uint8_t> time);
+    bool delWEAlarmTime(uint8_t position);
     
     std::vector<std::pair<uint8_t,uint8_t>> getWDAlarmTimes();
-    void addWDAlarmTime(std::pair<uint8_t,uint8_t> time);
-    void delWDAlarmTime(uint8_t position);
+    bool addWDAlarmTime(std::pair<uint8_t,uint8_t> time);
+    bool delWDAlarmTime(uint8_t position);
     
     void setAlarmState(bool newState);
     bool getAlarmState();
