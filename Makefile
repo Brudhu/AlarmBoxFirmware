@@ -210,7 +210,7 @@ ifneq ($(FLASH_INFO),)
 endif
 	perl -e 'print "Build complete. Elapsed time: ", time()-$(START_TIME),  " seconds\n\n"'
 
-upload flash: all
+flash: all
 	$(UPLOAD_COM)
 
 ota: all
