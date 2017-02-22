@@ -1,4 +1,10 @@
+#ifndef HARDWARE_CONSTANTS_HPP
+#define HARDWARE_CONSTANTS_HPP
+
 namespace Hardware {
-    constexpr uint8_t LedPin = 3; // botar o número certo
-    constexpr uint8_t LidButtonPin = 1; //idem
+    constexpr unsigned char LedPin = 3; // botar o número certo
+    constexpr unsigned char LidButtonPin = 1; //idem
+    constexpr int EstZone = (-5);
 }
+
+#endif

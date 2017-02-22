@@ -5,6 +5,7 @@
 #include <ESP8266WiFi.h>
 #include "task.hpp"
 #include "box.hpp"
+#include "date_time.hpp"
 
 
 namespace Luvitronics
@@ -12,7 +13,7 @@ namespace Luvitronics
     class CommandListener : public Task
     {
     public: 
-        CommandListener(uint16_t port, std::vector<std::shared_ptr<Box>> *boxesArray, int *systemHour, int *systemMin, int *systemSec);
+        CommandListener(uint16_t port, std::vector<std::shared_ptr<Box>> *boxesArray, Luvitronics::DateTime *dt);
         
         virtual void process() override;
         
@@ -21,9 +22,7 @@ namespace Luvitronics
         WiFiClient _client;
         std::vector<std::shared_ptr<Box>>* boxes;
         
-        int *systemTimeHour;
-        int *systemTimeMin;
-        int *systemTimeSec;
+        Luvitronics::DateTime *dateTime;
     };
 }
 

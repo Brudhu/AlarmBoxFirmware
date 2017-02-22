@@ -29,6 +29,7 @@
 #include "fw_updater.hpp"
 #include "http_listener.hpp"
 #include "command_listener.hpp"
+#include "date_time.hpp"
 
 #define SONOFF_BUTTON    0
 #define SONOFF_RELAY    12
@@ -57,10 +58,7 @@ byte packetBuffer[NTP_PACKET_SIZE];
 unsigned long epoch = 0;
 unsigned long lastEpoch = 0;
 unsigned long lastMillis = 0;
-int dayOfWeek = -1;
-int hours = -1;
-int minutes = -1;
-int seconds = -1;
+Luvitronics::DateTime dateTime(&epoch);
 int lastMinutes = -1;
 
 //for LED status
@@ -88,7 +86,7 @@ char box1min = -1;
 std::vector<std::shared_ptr<Box>> boxes;
 Luvitronics::FWUpdater* fwUpdater = new Luvitronics::FWUpdater();
 Luvitronics::HttpListener* httpListener = new Luvitronics::HttpListener(80, &boxes);
-Luvitronics::CommandListener* commandListener = new Luvitronics::CommandListener(2211, &boxes, &hours, &minutes, &seconds);
+Luvitronics::CommandListener* commandListener = new Luvitronics::CommandListener(2211, &boxes, &dateTime);
 
 const int CMD_WAIT = 0;
 const int CMD_BUTTON_CHANGE = 1;
@@ -207,15 +205,6 @@ void restart() {
 }
 
 void reset() {
-  //reset settings to defaults
-  /*
-    WMSettings defaults;
-    settings = defaults;
-    EEPROM.begin(512);
-    EEPROM.put(0, settings);
-    EEPROM.end();
-  */
-  //reset wifi credentials
   WiFi.disconnect();
   delay(1000);
   ESP.reset();
@@ -440,11 +429,8 @@ void loop()
       // subtract seventy years:
       lastEpoch = epoch;
       epoch = secsSince1900 - seventyYears;
+      dateTime.processEpoch();
       
-      dayOfWeek = (((epoch + 3600*EST_ZONE) % 604800) / 86400) - 3; // -3 because 1/1/1970 was a Thursday, not Sunday.
-      hours = ((epoch + 3600*EST_ZONE) % 86400L) / 3600;
-      minutes = (epoch  % 3600) / 60;
-      seconds = epoch % 60;
       lastMillis = millis();
     }
   }
@@ -453,32 +439,9 @@ void loop()
   {
     checkAlarm = 0;
       
-    unsigned long secsDiff;
-    secsDiff = (millis() - lastMillis)/1000;
-    lastMillis = millis();
-    if(seconds + secsDiff >= 60)
-    {
-      seconds = (seconds + secsDiff) % 60;
-      minutes++;
-    }
-    else
-      seconds = seconds + secsDiff;
+    dateTime.process();
     
-    if(minutes >= 60)
-    {
-      minutes = minutes % 60;
-      hours++;
-      if(hours >= 24)
-      {
-        hours = hours % 24;
-        dayOfWeek++;
-        
-        if(dayOfWeek >= 7)
-          dayOfWeek = dayOfWeek % 7;
-      }
-    }
-    
-    if(lastMinutes != minutes)
+    if(lastMinutes != dateTime.getMinute())
     {
         bool timeEqual = 0;
         for(auto& box : boxes)
@@ -487,22 +450,21 @@ void loop()
             std::vector<std::pair<uint8_t,uint8_t>> currentWETimes = box->getWEAlarmTimes();
             std::vector<std::pair<uint8_t,uint8_t>> currentWDTimes = box->getWDAlarmTimes();
             
-            //TODO: Find out if it's weekday or weekend before calling alarm!
-            //TODO 2: Find a way to turn on only that box' alarm
-            if(dayOfWeek == 0 || dayOfWeek == 6)
+            //TODO: Find a way to turn on only that box' alarm
+            if(dateTime.getDWeek() == 0 || dateTime.getDWeek() == 6)
                 for(auto& time : currentWETimes)
                 {
-                    if(std::get<0>(time) == hours && std::get<1>(time) == minutes)
+                    if(std::get<0>(time) == dateTime.getHour() && std::get<1>(time) == dateTime.getMinute())
                         timeEqual = 1;
                 }
             else
                 for(auto time : currentWDTimes)
                 {
-                    if(std::get<0>(time) == hours && std::get<1>(time) == minutes)
+                    if(std::get<0>(time) == dateTime.getHour() && std::get<1>(time) == dateTime.getMinute())
                         timeEqual = 1;
                 }
         }
-        lastMinutes = minutes;
+        lastMinutes = dateTime.getMinute();
         if(timeEqual)
         {
             tickerPWM.attach(0.5, tickPWM);

@@ -3,13 +3,11 @@
 
 #include <string>
 
-Luvitronics::CommandListener::CommandListener(uint16_t port, std::vector<std::shared_ptr<Box>> *boxesArray, int *systemHour, int *systemMin, int *systemSec)
+Luvitronics::CommandListener::CommandListener(uint16_t port, std::vector<std::shared_ptr<Box>> *boxesArray, Luvitronics::DateTime *dt)
     : Task(), _serverCom(port)
 {
     boxes = boxesArray;
-    systemTimeHour = systemHour;
-    systemTimeMin = systemMin;
-    systemTimeSec = systemSec;
+    dateTime = dt;
     _serverCom.begin();
 }
 
@@ -55,7 +53,7 @@ void Luvitronics::CommandListener::process() {
         else if (request.indexOf("CURTIME?") != -1)
         {
             char message[10];
-            sprintf(message, "%02d:%02d:%02d", *systemTimeHour, *systemTimeMin, *systemTimeSec);
+            sprintf(message, "%02d:%02d:%02d", dateTime->getHour(), dateTime->getMinute(), dateTime->getSecond());
             _client.println(message);
             okStatus = 1;
         }
