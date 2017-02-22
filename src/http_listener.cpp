@@ -25,12 +25,12 @@ void Luvitronics::HttpListener::process() {
         client.println(""); //  do not forget this one
         client.println("<!DOCTYPE HTML>");
         client.println("<html>");
+        char message[60];
         
         for(auto& box : *boxes)
         {
-            client.print("Box");
-            client.print(box->getBoxNumber());
-            client.println(":");
+            sprintf(message, "Box%d:\n", box->getBoxNumber());
+            client.print(message);
             
             std::vector<std::pair<uint8_t,uint8_t>> currentWETimes = box->getWEAlarmTimes();
             uint8_t i = 0;
@@ -38,18 +38,8 @@ void Luvitronics::HttpListener::process() {
             for(auto& time : currentWETimes)
             {
                 ++i;
-                //Serial.print (buffer); std::get<0>(time)
-                client.print("<p>");
-                client.print("Weekend Time ");
-                client.print(i);
-                client.print(": ");
-                client.print((uint8_t)std::get<0>(time));
-                //client.print((int)box1hour);
-                client.print(":");
-                client.print((uint8_t)std::get<1>(time));
-                //client.print((int)box1min);
-                client.println("</p>");
-                client.print("<p></p>");
+                sprintf(message, "<p>Weekend Time %d: %02d:%02d</p>\n<p></p>", i, (uint8_t)std::get<0>(time), (uint8_t)std::get<1>(time));
+                client.print(message);
             }
             
             std::vector<std::pair<uint8_t,uint8_t>> currentWDTimes = box->getWDAlarmTimes();
@@ -57,22 +47,11 @@ void Luvitronics::HttpListener::process() {
             for(auto& time : currentWDTimes)
             {
                 ++i;
-                //Serial.print (buffer); std::get<0>(time)
-                client.print("<p>");
-                client.print("Weekday Time ");
-                client.print(i);
-                client.print(": ");
-                client.print((uint8_t)std::get<0>(time));
-                //client.print((int)box1hour);
-                client.print(":");
-                client.print((uint8_t)std::get<1>(time));
-                //client.print((int)box1min);
-                client.println("</p>");
+                sprintf(message, "<p>Weekday Time %d: %02d:%02d</p>\n", i, (uint8_t)std::get<0>(time), (uint8_t)std::get<1>(time));
+                client.print(message);
             }
-            client.print("<p>Alarm Box1 = ");
-            client.print(digitalRead(Hardware::LedPin));
-            client.println("</p>");
-            client.print("<p></p>");
+            sprintf(message, "<p>Alarm Box%d = %d</p>\n<p></p>", box->getBoxNumber(), digitalRead(Hardware::LedPin));
+            client.print(message);
         }
         
         client.println("<br><br>");

@@ -30,47 +30,40 @@ void Luvitronics::CommandListener::process() {
         int hour;
         int minute;
         int delIndex;
-        char charAux[40];
+        
+        bool okStatus = 0;
         if(sscanf(requestChar, "B%dWET.Add=%d:%d", &boxNumber, &hour, &minute) == 3)
         {
-            if(boxes->at(boxNumber - 1)->addWEAlarmTime(std::make_pair(hour, minute)))
-                _client.println("OK");
-            else
-                _client.println("Fail");
+            okStatus = boxes->at(boxNumber - 1)->addWEAlarmTime(std::make_pair(hour, minute));
         }
         
         else if(sscanf(requestChar, "B%dWDT.Add=%d:%d", &boxNumber, &hour, &minute) == 3)
         {
-            if(boxes->at(boxNumber - 1)->addWDAlarmTime(std::make_pair(hour, minute)))
-                _client.println("OK");
-            else
-                _client.println("Fail");
+            okStatus = boxes->at(boxNumber - 1)->addWDAlarmTime(std::make_pair(hour, minute));
         }
         
         else if(sscanf(requestChar, "B%dWET.Del=%d", &boxNumber, &delIndex) == 2)
         {
-            if(boxes->at(boxNumber - 1)->delWEAlarmTime(delIndex))
-                _client.println("OK");
-            else
-                _client.println("Fail");
+            okStatus = boxes->at(boxNumber - 1)->delWEAlarmTime(delIndex);
         }
         
         else if(sscanf(requestChar, "B%dWDT.Del=%d", &boxNumber, &delIndex) == 2)
         {
-            if(boxes->at(boxNumber - 1)->delWDAlarmTime(delIndex))
-                _client.println("OK");
-            else
-                _client.println("Fail");
+            okStatus = boxes->at(boxNumber - 1)->delWDAlarmTime(delIndex);
         }
         
         else if (request.indexOf("CURTIME?") != -1)
         {
-            _client.print(*systemTimeHour);
-            _client.print(":");
-            _client.print(*systemTimeMin);
-            _client.print(":");
-            _client.println(*systemTimeSec);
+            char message[10];
+            sprintf(message, "%02d:%02d:%02d", *systemTimeHour, *systemTimeMin, *systemTimeSec);
+            _client.println(message);
+            okStatus = 1;
         }
+        
+        if (okStatus)
+            _client.println("OK\n");
+        else
+            _client.println("Fail\n");
         
         
         break;
