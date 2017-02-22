@@ -29,7 +29,6 @@
 #include "fw_updater.hpp"
 #include "http_listener.hpp"
 #include "command_listener.hpp"
-#include <time.h>
 
 #define SONOFF_BUTTON    0
 #define SONOFF_RELAY    12
