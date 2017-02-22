@@ -29,6 +29,7 @@
 #include "fw_updater.hpp"
 #include "http_listener.hpp"
 #include "command_listener.hpp"
+#include <time.h>
 
 #define SONOFF_BUTTON    0
 #define SONOFF_RELAY    12
@@ -57,6 +58,7 @@ byte packetBuffer[NTP_PACKET_SIZE];
 unsigned long epoch = 0;
 unsigned long lastEpoch = 0;
 unsigned long lastMillis = 0;
+int dayOfWeek = -1;
 int hours = -1;
 int minutes = -1;
 int seconds = -1;
@@ -440,26 +442,7 @@ void loop()
       lastEpoch = epoch;
       epoch = secsSince1900 - seventyYears;
       
-      //Serial.print("The difference in the clocks is: ");
-      //Serial.print(epoch - lastEpoch);
-      //Serial.println(" seconds");
-      
-      // print the hour, minute and second:
-      //Serial.print("The EST time is ");       // UTC is the time at Greenwich Meridian (GMT)
-      //Serial.print(((epoch + 3600*EST_ZONE) % 86400L) / 3600); // print the hour (86400 equals secs per day)
-      //Serial.print(':');
-      if ( ((epoch % 3600) / 60) < 10 ) {
-	// In the first 10 minutes of each hour, we'll want a leading '0'
-	//Serial.print('0');
-      }
-      //Serial.print((epoch  % 3600) / 60); // print the minute (3600 equals secs per minute)
-      //Serial.print(':');
-      if ( (epoch % 60) < 10 ) {
-	// In the first 10 seconds of each minute, we'll want a leading '0'
-	//Serial.print('0');
-      }
-      //Serial.println(epoch % 60); // print the second
-      
+      dayOfWeek = (((epoch + 3600*EST_ZONE) % 604800) / 86400) - 3; // -3 because 1/1/1970 was a Thursday, not Sunday.
       hours = ((epoch + 3600*EST_ZONE) % 86400L) / 3600;
       minutes = (epoch  % 3600) / 60;
       seconds = epoch % 60;
@@ -486,17 +469,19 @@ void loop()
     {
       minutes = minutes % 60;
       hours++;
-    }
-    
-    if(hours >= 24)
-    {
-      hours = 0;
+      if(hours >= 24)
+      {
+        hours = hours % 24;
+        dayOfWeek++;
+        
+        if(dayOfWeek >= 7)
+          dayOfWeek = dayOfWeek % 7;
+      }
     }
     
     if(lastMinutes != minutes)
     {
-        bool hourEqual = 0;
-        bool minEqual = 0;
+        bool timeEqual = 0;
         for(auto& box : boxes)
         {
 
@@ -505,31 +490,21 @@ void loop()
             
             //TODO: Find out if it's weekday or weekend before calling alarm!
             //TODO 2: Find a way to turn on only that box' alarm
-            for(auto& time : currentWETimes)
-            {
-                if((uint8_t)std::get<0>(time) == (uint8_t)hours)
+            if(dayOfWeek == 0 || dayOfWeek == 6)
+                for(auto& time : currentWETimes)
                 {
-                    hourEqual = 1;
+                    if(std::get<0>(time) == hours && std::get<1>(time) == minutes)
+                        timeEqual = 1;
                 }
-                if((uint8_t)std::get<1>(time) == (uint8_t)minutes)
+            else
+                for(auto time : currentWDTimes)
                 {
-                    minEqual = 1;
+                    if(std::get<0>(time) == hours && std::get<1>(time) == minutes)
+                        timeEqual = 1;
                 }
-            }
-            for(auto time : currentWDTimes)
-            {
-                if((uint8_t)std::get<0>(time) == (uint8_t)hours)
-                {
-                    hourEqual = 1;
-                }
-                if((uint8_t)std::get<1>(time) == (uint8_t)minutes)
-                {
-                    minEqual = 1;
-                }
-            }
         }
         lastMinutes = minutes;
-        if(hourEqual && minEqual)
+        if(timeEqual)
         {
             tickerPWM.attach(0.5, tickPWM);
             digitalWrite(BOX_LED, 1);
