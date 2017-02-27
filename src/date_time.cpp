@@ -3,19 +3,32 @@
 Luvitronics::DateTime::DateTime(unsigned long *epoch)
 {
       dt_epoch = epoch;
-      dt_millis = millis();
-      
-      dt_dWeek = (((*dt_epoch + 3600*Hardware::EstZone) % 604800) / 86400) - 3; // -3 because 1/1/1970 was a Thursday, not Sunday.
-      dt_hour = ((*dt_epoch + 3600*Hardware::EstZone) % 86400L) / 3600;
-      dt_min = (*dt_epoch  % 3600) / 60;
-      dt_sec = *dt_epoch % 60;
-      dt_lastMillis = dt_millis;
-	
+      processEpoch();
 }
 
 uint8_t Luvitronics::DateTime::getDWeek()
 {
     return dt_dWeek;
+}
+
+char* Luvitronics::DateTime::getDWeekStr(uint8_t dWeek)
+{
+    switch (dWeek) {
+        case 0:
+            return "Sunday";
+        case 1:
+            return "Monday";
+        case 2:
+            return "Tuesday";
+        case 3:
+            return "Wednesday";
+        case 4:
+            return "Thursday";
+        case 5:
+            return "Friday";
+        case 6:
+            return "Saturday";
+    }
 }
 
 uint8_t Luvitronics::DateTime::getHour()
@@ -52,7 +65,7 @@ void Luvitronics::DateTime::setSecond(uint8_t newValue) {
 void Luvitronics::DateTime::processEpoch() {
     dt_millis = millis();
     
-    dt_dWeek = (((*dt_epoch + 3600*Hardware::EstZone) % 604800) / 86400) - 3; // -3 because 1/1/1970 was a Thursday, not Sunday.
+    dt_dWeek = ((((*dt_epoch + 3600*Hardware::EstZone) % 604800L) / 86400L) + 4) % 7; // -3 because 1/1/1970 was a Thursday, not Sunday.
     dt_hour = ((*dt_epoch + 3600*Hardware::EstZone) % 86400L) / 3600;
     dt_min = (*dt_epoch  % 3600) / 60;
     dt_sec = *dt_epoch % 60;
@@ -82,7 +95,7 @@ void Luvitronics::DateTime::process() {
             dt_hour = dt_hour % 24;
             dt_dWeek++;
     
-        if(dt_dWeek >= 7)
+        if(dt_dWeek > 6)
             dt_dWeek = dt_dWeek % 7;
         }
     }

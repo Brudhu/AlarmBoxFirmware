@@ -14,7 +14,13 @@ Luvitronics::CommandListener::CommandListener(uint16_t port, std::vector<std::sh
 void Luvitronics::CommandListener::process() {
     //_client = _serverCom.available();
     if(!_client.connected())
-      _client = _serverCom.available();
+    {
+        _client = _serverCom.available();
+      
+        char message[40];
+        sprintf(message, "AlarmBox Ver XX.XX\nBoard Time: %s, %02d:%02d:%02d\n", dateTime->getDWeekStr(dateTime->getDWeek()), dateTime->getHour(), dateTime->getMinute(), dateTime->getSecond());
+        _client.println(message);
+    }
 
     for (; _client && _client.connected(); delay(10)) {
         if (!_client.available())
@@ -52,8 +58,8 @@ void Luvitronics::CommandListener::process() {
         
         else if (request.indexOf("CURTIME?") != -1)
         {
-            char message[10];
-            sprintf(message, "%02d:%02d:%02d", dateTime->getHour(), dateTime->getMinute(), dateTime->getSecond());
+            char message[40];
+            sprintf(message, "%s, %02d:%02d:%02d", dateTime->getDWeekStr(dateTime->getDWeek()), dateTime->getHour(), dateTime->getMinute(), dateTime->getSecond());
             _client.println(message);
             okStatus = 1;
         }

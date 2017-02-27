@@ -15,6 +15,7 @@ namespace Luvitronics
         DateTime(unsigned long *epoch);
         
         uint8_t getDWeek();
+        char* getDWeekStr(uint8_t dWeek);
         uint8_t getHour();
         uint8_t getMinute();
         uint8_t getSecond();

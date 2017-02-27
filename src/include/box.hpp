@@ -28,6 +28,8 @@ public:
     void resetAlarmState();
     
     uint8_t getBoxNumber();
+    uint8_t getLedPin();
+    uint8_t getLidButtonPin();
     uint8_t getLenWETimes();
     uint8_t getLenWDTimes();
     

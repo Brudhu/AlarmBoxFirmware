@@ -19,6 +19,7 @@
 #include <vector>
 #include <ESP8266WiFi.h>
 #include <ESP8266WebServer.h>
+#include <Ticker.h>
 #include <DNSServer.h>
 #include <WiFiManager.h>          //https://github.com/tzapu/WiFiManager
 #include <EEPROM.h>
@@ -29,16 +30,8 @@
 #include "fw_updater.hpp"
 #include "http_listener.hpp"
 #include "command_listener.hpp"
+#include "hardware_constants.hpp"
 #include "date_time.hpp"
-
-#define SONOFF_BUTTON    0
-#define SONOFF_RELAY    12
-#define SONOFF_LED      13
-#define BOX_BUTTON       1
-#define BOX_LED          3
-#define BOX_BUZZER      14
-
-#define EST_ZONE (-5)
 
 #define EEPROM_SALT 12663
 typedef struct {
@@ -54,6 +47,7 @@ IPAddress timeServerIP;
 const char* ntpServerName = "pool.ntp.org";//"time.nist.gov";
 #define NTP_PACKET_SIZE 48
 byte packetBuffer[NTP_PACKET_SIZE];
+uint8_t gotTime = 0;
 
 unsigned long epoch = 0;
 unsigned long lastEpoch = 0;
@@ -62,7 +56,6 @@ Luvitronics::DateTime dateTime(&epoch);
 int lastMinutes = -1;
 
 //for LED status
-#include <Ticker.h>
 Ticker ticker;
 Ticker tickerOTA;
 Ticker tickerTCP;
@@ -79,9 +72,6 @@ bool pwmState = 0;
 bool getTime = 0;
 bool checkUDP = 0;
 bool checkAlarm = 0;
-
-char box1hour = -1;
-char box1min = -1;
 
 std::vector<std::shared_ptr<Box>> boxes;
 Luvitronics::FWUpdater* fwUpdater = new Luvitronics::FWUpdater();
@@ -105,8 +95,8 @@ boolean stringComplete = false;  // whether the string is complete
 void tick()
 {
   //toggle state
-  int state = digitalRead(SONOFF_LED);  // get the current state of GPIO1 pin
-  digitalWrite(SONOFF_LED, !state);     // set pin to the opposite state
+  int state = digitalRead(Hardware::SonoffLed);  // get the current state of GPIO1 pin
+  digitalWrite(Hardware::SonoffLed, !state);     // set pin to the opposite state
 }
 
 void tickOTA()
@@ -127,12 +117,17 @@ void tickPB()
 void tickPWM()
 {
   pwmState = !pwmState;
-  analogWrite(BOX_BUZZER, 512 * pwmState);
+  analogWrite(Hardware::BoxBuzzer, 512 * pwmState);
 }
 
 void tickGetTime()
 {
-  getTime = 1;
+    getTime = 1;
+    if(gotTime == 1)
+    {
+        gotTime++;
+        tickerGetTime.attach(300, tickGetTime);
+    }
 }
 
 void tickCheckUDP()
@@ -147,18 +142,13 @@ void tickCheckAlarm()
 
 //gets called when WiFiManager enters configuration mode
 void configModeCallback (WiFiManager *myWiFiManager) {
-  //Serial.println("Entered config mode");
-  //Serial.println(WiFi.softAPIP());
-  //if you used auto generated SSID, print it
-  //Serial.println(myWiFiManager->getConfigPortalSSID());
-  //entered config mode, make led toggle faster
   ticker.attach(0.2, tick);
 }
 
 
 void setState(int s) {
-  digitalWrite(SONOFF_RELAY, s);
-  digitalWrite(SONOFF_LED, (s + 1) % 2); // led is active low
+  digitalWrite(Hardware::SonoffRelay, s);
+  digitalWrite(Hardware::SonoffLed, (s + 1) % 2); // led is active low
 }
 
 void turnOn() {
@@ -175,11 +165,20 @@ void toggleState() {
   cmd = CMD_BUTTON_CHANGE;
 }
 
-void resetBox1(){
-  tickerPWM.detach();
-  pwmState = 0;
-  analogWrite(BOX_BUZZER, 512 * pwmState);
-  digitalWrite(BOX_LED, 0);
+template<int i>
+void resetBox(){
+    auto& box = boxes.at(i - 1);
+    box->resetAlarmState();
+  
+    for(auto& box : boxes)
+    {
+        if(box->getAlarmState())
+            return;
+    }
+    pwmState = 0;
+    analogWrite(Hardware::BoxBuzzer, 512 * pwmState);
+    tickerPWM.detach();
+  //digitalWrite(i, 0);
 }
 
 //flag for saving data
@@ -243,7 +242,7 @@ void setup()
     inputString.reserve(200);
 
     //set led pin as output
-    pinMode(SONOFF_LED, OUTPUT);
+    pinMode(Hardware::SonoffLed, OUTPUT);
     // start ticker with 0.5 because we start in AP mode and try to connect
     ticker.attach(0.6, tick);
 
@@ -297,45 +296,26 @@ void setup()
     Serial.print(WiFi.localIP());
     Serial.println("/");
 
-    //setup button
-    pinMode(SONOFF_BUTTON, INPUT);
-    attachInterrupt(SONOFF_BUTTON, toggleState, CHANGE);
-
-    //setup relay
-    pinMode(SONOFF_RELAY, OUTPUT);
-
-    /*EEPROM.begin(1024);
-    EEPROM.put(513, 1);
-    EEPROM.put(514, 8);
-    EEPROM.put(515, 45);
-    EEPROM.put(516, 255);
-    EEPROM.put(517, 255);
-    EEPROM.put(534, 1);
-    EEPROM.put(535, 7);
-    EEPROM.put(536, 30);
-    //for (int i = 513; i < 1024; ++i)
-    //    EEPROM.put(i, 255);
-    EEPROM.end();*/
-
-    /*EEPROM.begin(1024);
-    EEPROM.get(513, box1hour);
-    EEPROM.get(514, box1min);
-    EEPROM.end();*/
-
-    //setup box IOs
-    Box* bxs[] = {
-        new Box(1, (uint8_t)BOX_LED, (uint8_t)BOX_BUTTON)
-    };
-    for (auto box : bxs) boxes.emplace_back(box);
-
-    pinMode(BOX_BUZZER, OUTPUT);
-    analogWriteFreq(1000);
-    analogWrite(BOX_BUZZER, 0);
-    attachInterrupt(BOX_BUTTON, resetBox1, FALLING);
 
     udp.begin(localUdpPort);
     WiFi.hostByName(ntpServerName, timeServerIP); 
     sendNTPpacket(timeServerIP);
+
+    //setup button
+    pinMode(Hardware::SonoffButton, INPUT);
+    attachInterrupt(Hardware::SonoffButton, toggleState, CHANGE);
+    //setup relay
+    pinMode(Hardware::SonoffRelay, OUTPUT);
+    //setup box IOs
+    Box* bxs[] = {
+        new Box(1, Hardware::LedPinBox1, Hardware::LidButtonPinBox1)
+    };
+    for (auto box : bxs) boxes.emplace_back(box);
+    attachInterrupt(Hardware::LidButtonPinBox1, resetBox<Hardware::LidButtonPinBox1>, RISING);
+    
+    pinMode(Hardware::BoxBuzzer, OUTPUT);
+    analogWriteFreq(1000);
+    analogWrite(Hardware::BoxBuzzer, 0);
 
     turnOff();
     //Serial.println("done setup");
@@ -344,7 +324,7 @@ void setup()
     tickerTCP.attach(0.05, tickTCP);
     tickerPB.attach(0.1, tickPB);
     //tickerPWM.attach(0.5, tickPWM);
-    tickerGetTime.attach(300, tickGetTime); // every 5 minutes get ntp time
+    tickerGetTime.attach(5, tickGetTime); // every 5 seconds, then 5 minutes (get ntp time)
     tickerCheckUDP.attach(1, tickCheckUDP);
     tickerCheckAlarm.attach(10, tickCheckAlarm);
   
@@ -374,7 +354,7 @@ void loop()
       case CMD_WAIT:
         break;
       case CMD_BUTTON_CHANGE:
-        int currentState = digitalRead(SONOFF_BUTTON);
+        int currentState = digitalRead(Hardware::SonoffButton);
         if (currentState != buttonState) {
           if (buttonState == LOW && currentState == HIGH) {
             long duration = millis() - startPress;
@@ -413,6 +393,8 @@ void loop()
     int cb = udp.parsePacket();
     if (cb)
     {
+      if(!gotTime)
+        gotTime++;
       // We've received a packet, read the data from it
       udp.read(packetBuffer, NTP_PACKET_SIZE); // read the packet into the buffer
 
@@ -463,13 +445,13 @@ void loop()
                     if(std::get<0>(time) == dateTime.getHour() && std::get<1>(time) == dateTime.getMinute())
                         timeEqual = 1;
                 }
+            if(timeEqual)
+            {
+                tickerPWM.attach(0.5, tickPWM);
+                box->setAlarmState(1);
+            }
         }
         lastMinutes = dateTime.getMinute();
-        if(timeEqual)
-        {
-            tickerPWM.attach(0.5, tickPWM);
-            digitalWrite(BOX_LED, 1);
-        }
     }
     
   }

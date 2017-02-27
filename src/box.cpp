@@ -1,8 +1,9 @@
 #include "box.hpp"
 
 Box::Box(uint16_t boxNumber, uint8_t ledPinNumber, uint8_t lidButtonPinNumber)
+    : number(boxNumber)
 {
-    number = boxNumber;
+    //number = boxNumber;
     ledPin = ledPinNumber;
     lidButtonPin = lidButtonPinNumber;
     
@@ -176,6 +177,17 @@ uint8_t Box::getBoxNumber()
 {
     return number;
 }
+
+uint8_t Box::getLedPin()
+{
+    return ledPin;
+}
+
+uint8_t Box::getLidButtonPin()
+{
+    return lidButtonPin;
+}
+
 
 uint8_t Box::getLenWETimes()
 {
